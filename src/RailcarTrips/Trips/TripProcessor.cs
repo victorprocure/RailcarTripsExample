@@ -15,25 +15,16 @@ public class TripProcessor
 
     public async Task ProcessTripsFromEventsAsync(List<EquipmentEvent> newEvents)
     {
-        // Group new events by equipment
         var newEventsByEquipment = newEvents
             .GroupBy(e => e.EquipmentId)
             .ToDictionary(g => g.Key, g => g.OrderBy(e => e.EventTime).ToList());
 
-        // For each equipment with new events, get all their events to process complete trips
-        foreach (var (equipmentId, newEquipmentEvents) in newEventsByEquipment)
+        foreach (var (equipmentId, equipmentEvents) in newEventsByEquipment)
         {
-            // Get all events for this equipment (old + new) to ensure we capture complete trips
-            var allEquipmentEvents = await _dbContext.EquipmentEvents
-                .Where(e => e.EquipmentId == equipmentId)
-                .OrderBy(e => e.EventTime)
-                .ToListAsync();
-
-            var trips = ExtractTripsFromEvents(allEquipmentEvents);
+            var trips = ExtractTripsFromEvents(equipmentEvents);
             
             foreach (var tripData in trips)
             {
-                // Check if trip already exists
                 var existingTrip = await _dbContext.Trips
                     .FirstOrDefaultAsync(t => 
                         t.EquipmentId == equipmentId &&
@@ -43,7 +34,6 @@ public class TripProcessor
                 if (existingTrip != null)
                     continue;
 
-                // Create the trip
                 var trip = new Trip
                 {
                     EquipmentId = equipmentId,
@@ -57,7 +47,6 @@ public class TripProcessor
                 _dbContext.Trips.Add(trip);
                 await _dbContext.SaveChangesAsync();
 
-                // Add trip events
                 var tripEvents = new List<TripEvent>();
                 var eventSequence = 1;
 
@@ -77,34 +66,36 @@ public class TripProcessor
         }
     }
 
-    private List<TripData> ExtractTripsFromEvents(List<EquipmentEvent> events)
+    private static List<TripData> ExtractTripsFromEvents(List<EquipmentEvent> events)
     {
         var trips = new List<TripData>();
-        var startEvents = new Queue<EquipmentEvent>();
 
-        foreach (var evt in events)
+        // Specifically project to a ListT to avoid multiple enumerations
+        var orderedEvents = events.OrderBy(e => e.EventTime).ToList();
+        var startEvents = orderedEvents.Where(e => e.EventCode == "W").ToList();
+        var endEvents = orderedEvents.Where(e => e.EventCode == "Z").ToList();
+
+        foreach (var startEvent in startEvents)
         {
-            if (evt.EventCode == "W")
-            {
-                startEvents.Enqueue(evt);
-            }
-            else if (evt.EventCode == "Z" && startEvents.Count > 0)
-            {
-                var startEvent = startEvents.Dequeue();
-                var tripEvents = events
-                    .Where(e => e.EventTime >= startEvent.EventTime && e.EventTime <= evt.EventTime)
-                    .OrderBy(e => e.EventTime)
-                    .ToList();
+            var matchedEndEvent = endEvents
+                .Where(e => e.EventTime > startEvent.EventTime)
+                .OrderBy(e => e.EventTime)
+                .FirstOrDefault();
+            
+            if(matchedEndEvent is null)
+                throw new InvalidOperationException($"No matching end event found for start event {startEvent.Id}.");
 
-                trips.Add(new TripData
-                {
-                    OriginCityId = startEvent.CityId,
-                    DestinationCityId = evt.CityId,
-                    StartTime = startEvent.EventTime,
-                    EndTime = evt.EventTime,
-                    Events = tripEvents
-                });
-            }
+            var tripEvents = orderedEvents
+                .Where(e => e.EventTime >= startEvent.EventTime && e.EventTime <= matchedEndEvent.EventTime)
+                .ToList();
+
+            trips.Add(new TripData{
+                OriginCityId = startEvent.CityId,
+                DestinationCityId = matchedEndEvent.CityId,
+                StartTime = startEvent.EventTime,
+                EndTime = matchedEndEvent.EventTime,
+                Events = tripEvents
+            });
         }
 
         return trips;
@@ -116,6 +107,8 @@ public class TripProcessor
         return (decimal)duration.TotalHours;
     }
 
+    // Using a readonly record struct here for immutability and value semantics
+    // At this scale most likely pointless
     private readonly record struct TripData
     {
         public TripData()

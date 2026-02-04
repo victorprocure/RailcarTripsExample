@@ -2,7 +2,6 @@ using RailcarTrips.Database;
 using RailcarTrips.Database.Models;
 using RailcarTrips.Parser;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
 
 namespace RailcarTrips.Trips;
 
@@ -23,6 +22,7 @@ public class TripsImportService
         {
             var parser = new CsvParser();
             var events = new List<EquipmentEvent>();
+            var equipmentToCreate = new Dictionary<string, Equipment>();
             
             using var reader = new StreamReader(csvStream);
             var parsedEvents = parser.ParseAsync(reader, row =>
@@ -39,82 +39,104 @@ public class TripsImportService
                 };
             }).Where(x => x != null);
 
-            await foreach (var parsedEvent in parsedEvents)
+            // Start transaction for all database operations
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            try
             {
-                if (string.IsNullOrWhiteSpace(parsedEvent?.EquipmentId) ||
-                    string.IsNullOrWhiteSpace(parsedEvent?.EventCode) ||
-                    string.IsNullOrWhiteSpace(parsedEvent?.EventTime) ||
-                    string.IsNullOrWhiteSpace(parsedEvent?.CityId))
+                await foreach (var parsedEvent in parsedEvents)
                 {
-                    continue;
+                    if (string.IsNullOrWhiteSpace(parsedEvent?.EquipmentId) ||
+                        string.IsNullOrWhiteSpace(parsedEvent?.EventCode) ||
+                        string.IsNullOrWhiteSpace(parsedEvent?.EventTime) ||
+                        string.IsNullOrWhiteSpace(parsedEvent?.CityId))
+                    {
+                        continue;
+                    }
+
+                    // Verify equipment exists or create it
+                    var equipment = await _dbContext.Equipment
+                        .FirstOrDefaultAsync(e => e.Id == parsedEvent.EquipmentId);
+                    if (equipment == null)
+                    {
+                        // Queue equipment for creation (will be created in transaction)
+                        if (!equipmentToCreate.ContainsKey(parsedEvent.EquipmentId))
+                        {
+                            equipmentToCreate[parsedEvent.EquipmentId] = new Equipment 
+                            { 
+                                Id = parsedEvent.EquipmentId, 
+                                Name = parsedEvent.EquipmentId 
+                            };
+                        }
+                    }
+
+                    // Verify city exists
+                    if (!int.TryParse(parsedEvent.CityId, out var cityId) ||
+                        !await _dbContext.Cities.AnyAsync(c => c.Id == cityId))
+                    {
+                        continue;
+                    }
+
+                    // Parse event time
+                    if (!DateTime.TryParse(parsedEvent.EventTime, out var eventTime))
+                    {
+                        continue;
+                    }
+
+                    var city = await _dbContext.Cities.FirstAsync(c => c.Id == cityId);
+                    var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(city.TimeZone);
+                    var eventTimeOffset = new DateTimeOffset(eventTime, timeZoneInfo.GetUtcOffset(eventTime));
+
+                    var equipmentEvent = new EquipmentEvent
+                    {
+                        EquipmentId = parsedEvent.EquipmentId,
+                        EventCode = parsedEvent.EventCode,
+                        EventTime = eventTimeOffset,
+                        CityId = cityId
+                    };
+
+                    events.Add(equipmentEvent);
                 }
 
-                // Verify equipment exists or skip
-                var equipment = await _dbContext.Equipment
-                    .FirstOrDefaultAsync(e => e.Id == parsedEvent.EquipmentId);
-                if (equipment == null)
+                if (events.Count == 0)
                 {
-                    // Create equipment if it doesn't exist
-                    equipment = new Equipment 
+                    await transaction.RollbackAsync();
+                    return new ImportResult 
                     { 
-                        Id = parsedEvent.EquipmentId, 
-                        Name = parsedEvent.EquipmentId 
+                        Success = false, 
+                        Message = "No valid events found in the CSV file." 
                     };
-                    _dbContext.Equipment.Add(equipment);
+                }
+
+                // Add any new equipment to the database
+                if (equipmentToCreate.Count > 0)
+                {
+                    _dbContext.Equipment.AddRange(equipmentToCreate.Values);
                     await _dbContext.SaveChangesAsync();
                 }
 
-                // Verify city exists
-                if (!int.TryParse(parsedEvent.CityId, out var cityId) ||
-                    !await _dbContext.Cities.AnyAsync(c => c.Id == cityId))
+                // Add events to database
+                _dbContext.EquipmentEvents.AddRange(events);
+                await _dbContext.SaveChangesAsync();
+
+                // Process trips from the newly imported events
+                await _tripProcessor.ProcessTripsFromEventsAsync(events);
+
+                // Commit transaction
+                await transaction.CommitAsync();
+
+                return new ImportResult
                 {
-                    continue;
-                }
-
-                // Parse event time - assuming UTC
-                if (!DateTime.TryParse(parsedEvent.EventTime, out var eventTime))
-                {
-                    continue;
-                }
-
-                var city = await _dbContext.Cities.FirstAsync(c => c.Id == cityId);
-
-                var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(city.TimeZone);
-                var eventTimeOffset = new DateTimeOffset(eventTime, timeZoneInfo.GetUtcOffset(eventTime));
-
-                var equipmentEvent = new EquipmentEvent
-                {
-                    EquipmentId = parsedEvent.EquipmentId,
-                    EventCode = parsedEvent.EventCode,
-                    EventTime = eventTimeOffset,
-                    CityId = cityId
-                };
-
-                events.Add(equipmentEvent);
-            }
-
-            if (events.Count == 0)
-            {
-                return new ImportResult 
-                { 
-                    Success = false, 
-                    Message = "No valid events found in the CSV file." 
+                    Success = true,
+                    Message = $"Successfully imported {events.Count} events and processed trips.",
+                    EventsImported = events.Count
                 };
             }
-
-            // Add events to database
-            _dbContext.EquipmentEvents.AddRange(events);
-            await _dbContext.SaveChangesAsync();
-
-            // Process trips from the newly imported events
-            await _tripProcessor.ProcessTripsFromEventsAsync(events);
-
-            return new ImportResult
+            catch
             {
-                Success = true,
-                Message = $"Successfully imported {events.Count} events and processed trips.",
-                EventsImported = events.Count
-            };
+                // Rollback transaction on any error
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
         catch (Exception ex)
         {

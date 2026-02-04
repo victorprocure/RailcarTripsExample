@@ -20,7 +20,6 @@ public record TripEvent
     [Required]
     public int EventSequence { get; init; }
 
-    // Navigation properties
     [DeleteBehavior(DeleteBehavior.Cascade)]
     public Trip Trip { get; init; } = default!;
 
