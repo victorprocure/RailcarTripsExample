@@ -11,11 +11,23 @@ internal sealed class CsvParser
 
     private readonly CsvOptions _options;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CsvParser"/> class with optional parsing options.
+    /// </summary>
+    /// <param name="options">The parsing options; uses default options if not specified.</param>
     public CsvParser(CsvOptions? options = null)
     {
         _options = options ?? CsvOptions.Default;
     }
 
+    /// <summary>
+    /// Parses CSV data from a text reader and maps each row to the specified type.
+    /// </summary>
+    /// <typeparam name="T">The type to map each row to.</typeparam>
+    /// <param name="reader">The text reader containing CSV data.</param>
+    /// <param name="map">The mapping function to transform each row.</param>
+    /// <returns>An enumerable of mapped rows.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="reader"/> or <paramref name="map"/> is null.</exception>
     public IEnumerable<T> Parse<T>(TextReader reader, Func<IReadOnlyList<string>, T> map)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -39,6 +51,15 @@ internal sealed class CsvParser
         }
     }
 
+    /// <summary>
+    /// Asynchronously parses CSV data from a text reader and maps each row to the specified type.
+    /// </summary>
+    /// <typeparam name="T">The type to map each row to.</typeparam>
+    /// <param name="reader">The text reader containing CSV data.</param>
+    /// <param name="map">The mapping function to transform each row.</param>
+    /// <param name="cancellationToken">The cancellation token to observe during the asynchronous operation.</param>
+    /// <returns>An asynchronous enumerable of mapped rows.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="reader"/> or <paramref name="map"/> is null.</exception>
     public async IAsyncEnumerable<T> ParseAsync<T>(
         TextReader reader,
         Func<IReadOnlyList<string>, T> map,
@@ -65,6 +86,12 @@ internal sealed class CsvParser
         }
     }
 
+    /// <remarks>
+    /// I probably could've found a CSV parsing library that does this already, but
+    /// I wanted to implement myself to flex a little and try something different.
+    /// I wanted to see how memory efficient I could make it using pooled buffers.
+    /// in the time I allotted myself.
+    /// </remarks>
     private IEnumerable<string[]> ReadRows(TextReader reader)
     {
 
@@ -205,6 +232,9 @@ internal sealed class CsvParser
         }
     }
 
+    /// <remarks>
+    /// Same as above really, just the async variation
+    /// </remarks>
     private async IAsyncEnumerable<string[]> ReadRowsAsync(
         TextReader reader,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -356,6 +386,11 @@ internal sealed class CsvParser
         row.Add(field.ToStringAndClear(trimWhitespace));
     }
 
+    /// <remarks>
+    /// I could've added duck-typed enumerator struct in here for even more
+    /// memory efficiency, but it was already getting a bit overkill.
+    /// And taking up more time than I wanted.
+    /// </remarks>
     private sealed class FieldBuffer : IDisposable
     {
         private char[] _buffer;

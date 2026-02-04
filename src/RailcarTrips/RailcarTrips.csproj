@@ -8,8 +8,12 @@
     <UserSecretsId>9a6c3530-38bc-4d96-b42b-64958d02e4f1</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+    <_Parameter1>$(AssemblyName).Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.2" />
-    <PackageReference Include="System.Linq.AsyncEnumerable" Version="10.0.2" />
   </ItemGroup>
 </Project>

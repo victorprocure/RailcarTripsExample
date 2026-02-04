@@ -28,6 +28,7 @@ public record Trip
     [ForeignKey(nameof(DestinationCity))]
     public long DestinationCityId { get; init; }
 
+    // TODO: Rename to StartTime and EndTime for clarity and consistency
     [Required]
     public DateTimeOffset StartUtc { get; init; }
 
@@ -38,7 +39,6 @@ public record Trip
     [Column(TypeName = "decimal(10, 2)")]
     public decimal TotalTripHours { get; init; }
 
-    // Navigation properties
     [DeleteBehavior(DeleteBehavior.Cascade)]
     public Equipment Equipment { get; init; } = default!;
 

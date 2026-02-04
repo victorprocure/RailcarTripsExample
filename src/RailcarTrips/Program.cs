@@ -6,7 +6,10 @@ using RailcarTrips.Trips;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.SetMinimumLevel(LogLevel.Information);
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -20,14 +23,16 @@ builder.Services.AddScoped<TripsImportService>();
 var app = builder.Build();
 
 using var scope = app.Services.CreateScope();
+var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 var dbContext = scope.ServiceProvider.GetRequiredService<RailcarTripsContext>();
-await dbContext.Database.MigrateAsync().ConfigureAwait(false);
 
-// Configure the HTTP request pipeline.
+logger.LogInformation("Starting database migration");
+await dbContext.Database.MigrateAsync().ConfigureAwait(false);
+logger.LogInformation("Database migration completed successfully");
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
