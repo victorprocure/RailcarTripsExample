@@ -1,18 +1,22 @@
 ﻿@page "/"
 @rendermode InteractiveServer
-@using RailcarTrips.Database
 @using RailcarTrips.Database.Models
-@using Microsoft.EntityFrameworkCore
 @using RailcarTrips.Trips
-@inject RailcarTripsContext DbContext
+@inject TripsService TripsService
 
 <PageTitle>Trips</PageTitle>
 
-<div class="py-8">
-    <h1 class="text-4xl font-bold text-gray-900 mb-2">Railcar Trips</h1>
-    <p class="text-gray-600 mb-6">View all recorded trips and their details. Click a trip to view its events.</p>
+<div class="py-8 space-y-8">
+    <!-- Upload Section -->
+    <EventsUploadForm OnImportSuccess="RefreshTrips" />
 
-    <TripsList Trips="trips" OnTripSelected="OpenModal" OnSort="SortBy" SortColumn="sortColumn" SortAscending="sortAscending" />
+    <!-- Trips Section -->
+    <div>
+        <h1 class="text-4xl font-bold text-gray-900 mb-2">Railcar Trips</h1>
+        <p class="text-gray-600 mb-6">View all recorded trips and their details. Click a trip to view its events.</p>
+
+        <TripsList Trips="trips" OnTripSelected="OpenModal" OnSort="SortBy" SortColumn="sortColumn" SortAscending="sortAscending" />
+    </div>
 </div>
 
 <!-- Trip Details Modal Component -->
@@ -26,19 +30,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var allTrips = DbContext.Trips
-            .Include(t => t.Equipment)
-            .Include(t => t.OriginCity)
-            .Include(t => t.DestinationCity)
-            .Include(t => t.TripEvents)
-                .ThenInclude(te => te.Event)
-                    .ThenInclude(e => e.Equipment)
-            .Include(t => t.TripEvents)
-                .ThenInclude(te => te.Event)
-                    .ThenInclude(e => e.City)
-            .ToList();
-        
-        trips = ApplySorting(allTrips);
+        var allTrips = await TripsService.GetAllTripsAsync();
+        trips = TripsService.SortTrips(allTrips, sortColumn, sortAscending);
     }
 
     private void SortBy(string column)
@@ -52,22 +45,7 @@
             sortColumn = column;
             sortAscending = true;
         }
-        trips = ApplySorting(trips);
-    }
-
-    private List<Trip> ApplySorting(List<Trip> tripsToSort)
-    {
-        var sorted = sortColumn switch
-        {
-            "Equipment" => sortAscending ? tripsToSort.OrderBy(t => t.EquipmentId).ToList() : tripsToSort.OrderByDescending(t => t.EquipmentId).ToList(),
-            "Origin" => sortAscending ? tripsToSort.OrderBy(t => t.OriginCity?.Name).ToList() : tripsToSort.OrderByDescending(t => t.OriginCity?.Name).ToList(),
-            "Destination" => sortAscending ? tripsToSort.OrderBy(t => t.DestinationCity?.Name).ToList() : tripsToSort.OrderByDescending(t => t.DestinationCity?.Name).ToList(),
-            "StartTime" => sortAscending ? tripsToSort.OrderBy(t => t.StartUtc).ToList() : tripsToSort.OrderByDescending(t => t.StartUtc).ToList(),
-            "EndTime" => sortAscending ? tripsToSort.OrderBy(t => t.EndUtc).ToList() : tripsToSort.OrderByDescending(t => t.EndUtc).ToList(),
-            "Duration" => sortAscending ? tripsToSort.OrderBy(t => t.TotalTripHours).ToList() : tripsToSort.OrderByDescending(t => t.TotalTripHours).ToList(),
-            _ => tripsToSort
-        };
-        return sorted;
+        trips = TripsService.SortTrips(trips, sortColumn, sortAscending);
     }
 
     private void OpenModal(Trip trip)
@@ -78,5 +56,11 @@
     private void CloseModal()
     {
         selectedTrip = null;
+    }
+
+    private async Task RefreshTrips()
+    {
+        var allTrips = await TripsService.GetAllTripsAsync();
+        trips = TripsService.SortTrips(allTrips, sortColumn, sortAscending);
     }
 }

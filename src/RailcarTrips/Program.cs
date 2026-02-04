@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 
 using RailcarTrips.Components;
 using RailcarTrips.Database;
+using RailcarTrips.Trips;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,10 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddDbContext<RailcarTripsContext>(o =>
     o.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddScoped<TripsService>();
+builder.Services.AddScoped<TripProcessor>();
+builder.Services.AddScoped<TripsImportService>();
 
 var app = builder.Build();
 
