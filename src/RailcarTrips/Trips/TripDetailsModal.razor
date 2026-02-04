@@ -1,0 +1,101 @@
+@using RailcarTrips.Database.Models
+@rendermode InteractiveServer
+
+@if (Trip != null)
+{
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @onclick="async () => await OnBackdropClick()">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" @onclick:stopPropagation="true">
+            <!-- Modal Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-blue-50 to-blue-100 border-b border-gray-200 p-6 flex justify-between items-center">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900">@Trip.EquipmentId</h2>
+                    <p class="text-sm text-gray-600 mt-1">Trip Details & Events</p>
+                </div>
+                <button @onclick="OnClose" class="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none">&times;</button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-6 space-y-6">
+                <!-- Trip Details -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Trip Summary</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <p class="text-sm text-gray-600 mb-1">Origin City</p>
+                            <p class="text-lg font-semibold text-gray-900">@Trip.OriginCity?.Name</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <p class="text-sm text-gray-600 mb-1">Destination City</p>
+                            <p class="text-lg font-semibold text-gray-900">@Trip.DestinationCity?.Name</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <p class="text-sm text-gray-600 mb-1">Departure Time</p>
+                            <p class="text-lg font-semibold text-gray-900">@Trip.StartUtc.ToUniversalTime().ToString("g") Z</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <p class="text-sm text-gray-600 mb-1">Arrival Time</p>
+                            <p class="text-lg font-semibold text-gray-900">@Trip.EndUtc.ToUniversalTime().ToString("g") Z</p>
+                        </div>
+                        <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                            <p class="text-sm text-blue-600 mb-1">Total Duration</p>
+                            <p class="text-lg font-semibold text-blue-900">@Trip.TotalTripHours.ToString("F2") hours</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Events Table -->
+                @if (Trip.TripEvents != null && Trip.TripEvents.Any())
+                {
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Events (@Trip.TripEvents.Count)</h3>
+                        <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                            <table class="min-w-full">
+                                <thead class="bg-gray-100 border-b border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Sequence</th>
+                                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Event Code</th>
+                                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Time</th>
+                                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">City</th>
+                                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Equipment</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var tripEvent in Trip.TripEvents.OrderBy(te => te.EventSequence))
+                                    {
+                                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                            <td class="px-4 py-3 text-sm text-gray-900 font-medium">@tripEvent.EventSequence</td>
+                                            <td class="px-4 py-3 text-sm">
+                                                <span class="inline-block bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-semibold">@tripEvent.Event?.EventCode</span>
+                                            </td>
+                                            <td class="px-4 py-3 text-sm text-gray-700">@tripEvent.Event?.EventTime.ToUniversalTime().ToString("g") Z</td>
+                                            <td class="px-4 py-3 text-sm text-gray-700">@tripEvent.Event?.City?.Name</td>
+                                            <td class="px-4 py-3 text-sm text-gray-700">@tripEvent.Event?.Equipment?.Id</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-6 flex justify-end gap-3">
+                <button @onclick="OnClose" class="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-colors">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Trip? Trip { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private async Task OnBackdropClick()
+    {
+        await OnClose.InvokeAsync();
+    }
+}
